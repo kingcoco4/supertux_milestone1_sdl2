@@ -1,3 +1,8 @@
+This is a rough attempt at porting v0.1.3 (Milestone 1) to SDL2, so it can be compiled and run on modern machines.
+Most of the work was done in my other repo, this one is a rebase off the main supertux repo instead of the original branch I used.
+
+
+
 
 - An introduction for SuperTux -
 http://super-tux.sf.net/
