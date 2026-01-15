@@ -47,6 +47,8 @@ struct JoystickKeymap
 extern JoystickKeymap joystick_keymap;
 
 extern SDL_Surface * screen;
+extern SDL_Window* window;
+extern SDL_Renderer* renderer;
 extern Text* black_text;
 extern Text* gold_text;
 extern Text* silver_text;
@@ -60,11 +62,20 @@ extern Text* yellow_nums;
 
 extern MouseCursor * mouse_cursor;
 
+extern int SCREEN_W;
+extern int SCREEN_H;
+
 extern bool use_gl;
 extern bool use_joystick;
 extern bool use_fullscreen;
 extern bool debug_mode;
 extern bool show_fps;
+
+
+#ifndef NOOPENGL
+#include <SDL2/SDL_opengl.h>
+extern SDL_GLContext gl_context;
+#endif
 
 /** The number of the joystick that will be use in the game */
 extern int joystick_num;

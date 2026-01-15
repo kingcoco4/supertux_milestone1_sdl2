@@ -23,8 +23,8 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
-#include <SDL.h>
-#include <SDL_image.h>
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_image.h>
 
 #ifndef WIN32
 #include <sys/types.h>
@@ -48,16 +48,15 @@ void clearscreen(int r, int g, int b)
 #ifndef NOOPENGL
   if(use_gl)
     {
-      glClearColor(r/256, g/256, b/256, 1.0);
-      glClear(GL_COLOR_BUFFER_BIT);
+      glClearColor(r/256.0f, g/256.0f, b/256.0f, 1.0f);
+      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     }
   else
   {
 #endif
-
-    SDL_FillRect(screen, NULL, SDL_MapRGB(screen->format, r, g, b));
+    SDL_SetRenderDrawColor(renderer, r, g, b, 255);
+    SDL_RenderClear(renderer);
 #ifndef NOOPENGL
-
     }
 #endif
 }
@@ -81,7 +80,6 @@ void drawgradient(Color top_clr, Color bot_clr)
   else
   {
 #endif
-
     for(float y = 0; y < 480; y += 2)
       fillrect(0, (int)y, 640, 2,
                      (int)(((float)(top_clr.red-bot_clr.red)/(0-480)) * y + top_clr.red),
@@ -90,7 +88,6 @@ void drawgradient(Color top_clr, Color bot_clr)
 /* calculates the color for each line, based in the generic equation for functions: y = mx + b */
 
 #ifndef NOOPENGL
-
     }
 #endif
 }
@@ -104,36 +101,36 @@ void fade(Surface *surface, int seconds, bool fade_out);
 
 void fade(const std::string& surface, int seconds, bool fade_out)
 {
-Surface* sur = new Surface(datadir + surface, IGNORE_ALPHA);
-fade(sur, seconds, fade_out);
-delete sur;
+  Surface* sur = new Surface(datadir + surface, IGNORE_ALPHA);
+  fade(sur, seconds, fade_out);
+  delete sur;
 }
 
 void fade(Surface *surface, int seconds, bool fade_out)
 {
-float alpha;
-if (fade_out)
-  alpha = 0;
-else
-  alpha = 255;
+  float alpha;
+  if (fade_out)
+    alpha = 0;
+  else
+    alpha = 255;
 
   int cur_time, old_time;
   cur_time = SDL_GetTicks();
 
   while(alpha >= 0 && alpha < 256)
     {
-    surface->draw(0,0,(int)alpha);
-    flipscreen();
+      surface->draw(0, 0, (int)alpha);
+      flipscreen();
 
-    old_time = cur_time;
-    cur_time = SDL_GetTicks();
+      old_time = cur_time;
+      cur_time = SDL_GetTicks();
 
-    /* Calculate the next alpha value */
-    float calc = (float) ((cur_time - old_time) / seconds);
-    if(fade_out)
-      alpha += 255 * calc;
-    else
-      alpha -= 255 * calc;
+      /* Calculate the next alpha value */
+      float calc = (float) ((cur_time - old_time) / seconds);
+      if(fade_out)
+        alpha += 255 * calc;
+      else
+        alpha -= 255 * calc;
     }
 }
 
@@ -179,89 +176,39 @@ void putpixel(SDL_Surface *surface, int x, int y, Uint32 pixel)
 }
 
 /* Draw a single pixel on the screen. */
-void drawpixel(int x, int y, Uint32 pixel)
+void drawpixel(int x, int y, Uint8 r, Uint8 g, Uint8 b, Uint8 a)
 {
-  /* Lock the screen for direct access to the pixels */
-  if ( SDL_MUSTLOCK(screen) )
-    {
-      if ( SDL_LockSurface(screen) < 0 )
-        {
-          fprintf(stderr, "Can't lock screen: %s\n", SDL_GetError());
-          return;
-        }
-    }
-
-  if(!(x < 0 || y < 0 || x > screen->w || y > screen->h))
-    putpixel(screen, x, y, pixel);
-
-  if ( SDL_MUSTLOCK(screen) )
-    {
-      SDL_UnlockSurface(screen);
-    }
-  /* Update just the part of the display that we've changed */
-  SDL_UpdateRect(screen, x, y, 1, 1);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(renderer, r, g, b, a);
+    SDL_RenderDrawPoint(renderer, x, y);
 }
+
 
 void drawline(int x1, int y1, int x2, int y2, int r, int g, int b, int a)
 {
+
+
 #ifndef NOOPENGL
   if(use_gl)
     {
       glEnable(GL_BLEND);
       glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-      glColor4ub(r, g, b,a);
+      glColor4ub(r, g, b, a);
 
       glBegin(GL_LINES);
       glVertex2f(x1, y1);
       glVertex2f(x2, y2);
       glEnd();
+
       glDisable(GL_BLEND);
     }
   else
     {
 #endif
-
-      /* Basic unantialiased Bresenham line algorithm */
-      int lg_delta, sh_delta, cycle, lg_step, sh_step;
-      Uint32 color = SDL_MapRGBA(screen->format, r, g, b, a);
-
-      lg_delta = x2 - x1;
-      sh_delta = y2 - y1;
-      lg_step = SGN(lg_delta);
-      lg_delta = ABS(lg_delta);
-      sh_step = SGN(sh_delta);
-      sh_delta = ABS(sh_delta);
-      if (sh_delta < lg_delta)
-        {
-          cycle = lg_delta >> 1;
-          while (x1 != x2)
-            {
-              drawpixel(x1, y1, color);
-              cycle += sh_delta;
-              if (cycle > lg_delta)
-                {
-                  cycle -= lg_delta;
-                  y1 += sh_step;
-                }
-              x1 += lg_step;
-            }
-          drawpixel(x1, y1, color);
-        }
-      cycle = sh_delta >> 1;
-      while (y1 != y2)
-        {
-          drawpixel(x1, y1, color);
-          cycle += lg_delta;
-          if (cycle > sh_delta)
-            {
-              cycle -= sh_delta;
-              x1 += lg_step;
-            }
-          y1 += sh_step;
-        }
-      drawpixel(x1, y1, color);
+      SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+      SDL_SetRenderDrawColor(renderer, r, g, b, a);
+      SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
 #ifndef NOOPENGL
-
     }
 #endif
 }
@@ -270,23 +217,24 @@ void drawline(int x1, int y1, int x2, int y2, int r, int g, int b, int a)
 
 void fillrect(float x, float y, float w, float h, int r, int g, int b, int a)
 {
-if(w < 0)
-	{
-	x += w;
-	w = -w;
-	}
-if(h < 0)
-	{
-	y += h;
-	h = -h;
-	}
+  if(w < 0)
+    {
+      x += w;
+      w = -w;
+    }
+  if(h < 0)
+    {
+      y += h;
+      h = -h;
+    }
+
 
 #ifndef NOOPENGL
   if(use_gl)
     {
       glEnable(GL_BLEND);
       glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-      glColor4ub(r, g, b,a);
+      glColor4ub(r, g, b, a);
 
       glBegin(GL_POLYGON);
       glVertex2f(x, y);
@@ -294,79 +242,63 @@ if(h < 0)
       glVertex2f(x+w, y+h);
       glVertex2f(x, y+h);
       glEnd();
+
       glDisable(GL_BLEND);
     }
   else
     {
 #endif
-      SDL_Rect src, rect;
-      SDL_Surface *temp = NULL;
-
+      SDL_Rect rect;
       rect.x = (int)x;
       rect.y = (int)y;
       rect.w = (int)w;
       rect.h = (int)h;
 
-      if(a != 255)
-        {
-          temp = SDL_CreateRGBSurface(screen->flags, rect.w, rect.h, screen->format->BitsPerPixel,
-                                      screen->format->Rmask,
-                                      screen->format->Gmask,
-                                      screen->format->Bmask,
-                                      screen->format->Amask);
-
-
-          src.x = 0;
-          src.y = 0;
-          src.w = rect.w;
-          src.h = rect.h;
-
-          SDL_FillRect(temp, &src, SDL_MapRGB(screen->format, r, g, b));
-
-          SDL_SetAlpha(temp, SDL_SRCALPHA, a);
-
-          SDL_BlitSurface(temp,0,screen,&rect);
-
-          SDL_FreeSurface(temp);
-        }
-      else
-        SDL_FillRect(screen, &rect, SDL_MapRGB(screen->format, r, g, b));
-
+      SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+      SDL_SetRenderDrawColor(renderer, r, g, b, a);
+      SDL_RenderFillRect(renderer, &rect);
 #ifndef NOOPENGL
-
     }
 #endif
 }
-
 
 /* --- UPDATE SCREEN --- */
 
 void updatescreen(void)
 {
-  if(use_gl)  /*clearscreen(0,0,0);*/
-    SDL_GL_SwapBuffers();
+  if(use_gl)
+    SDL_GL_SwapWindow(window);
   else
-    SDL_UpdateRect(screen, 0, 0, screen->w, screen->h);
+    SDL_RenderPresent(renderer);
 }
 
 void flipscreen(void)
 {
   if(use_gl)
-    SDL_GL_SwapBuffers();
+    SDL_GL_SwapWindow(window);
   else
-    SDL_Flip(screen);
+    SDL_RenderPresent(renderer);
 }
 
 void fadeout()
 {
   clearscreen(0, 0, 0);
-  white_text->draw_align("Loading...", screen->w/2, screen->h/2, A_HMIDDLE, A_TOP);
+  
+  int win_w, win_h;
+  SDL_GetWindowSize(window, &win_w, &win_h);
+  
+  white_text->draw_align("Loading...", win_w/2, win_h/2, A_HMIDDLE, A_TOP);
   flipscreen();
 }
 
 void update_rect(SDL_Surface *scr, Sint32 x, Sint32 y, Sint32 w, Sint32 h)
 {
-  if(!use_gl)
-    SDL_UpdateRect(scr, x, y, w, h);
+  // In SDL2, partial screen updates are not needed.
+  // The renderer handles this automatically with SDL_RenderPresent().
+  // This function is kept for compatibility but does nothing.
+  (void)scr;
+  (void)x;
+  (void)y;
+  (void)w;
+  (void)h;
 }
-

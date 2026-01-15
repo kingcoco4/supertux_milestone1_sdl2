@@ -62,6 +62,17 @@ int joystick_num = 0;
 char* level_startup_file = 0;
 bool launch_leveleditor_mode = false;
 
+SDL_Window* window = NULL;
+SDL_Renderer* renderer = NULL;
+//bool use_gl = false;
+
+int SCREEN_W = 640;
+int SCREEN_H = 480;
+#ifndef NOOPENGL
+SDL_GLContext gl_context = NULL;
+#endif
+
+
 /* SuperTux directory ($HOME/.supertux) and save directory($HOME/.supertux/save) */
 char *st_dir, *st_save_dir;
 

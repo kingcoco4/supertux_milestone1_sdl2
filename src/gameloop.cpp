@@ -111,7 +111,7 @@ GameSession::restart_level()
       for(std::vector<ResetPoint>::iterator i = get_level()->reset_points.begin();
           i != get_level()->reset_points.end(); ++i)
         {
-          if (i->x - screen->w/2 < old_x_pos && best_reset_point.x < i->x)
+          if (i->x - SCREEN_W/2 < old_x_pos && best_reset_point.x < i->x)
             best_reset_point = *i;
         }
       
@@ -126,7 +126,7 @@ GameSession::restart_level()
               std::cout << "Warning: reset point inside a wall.\n";
           }                                                                  
 
-          scroll_x = best_reset_point.x - screen->w/2;
+          scroll_x = best_reset_point.x - SCREEN_W/2;
         }
     }
     
@@ -238,7 +238,7 @@ GameSession::process_events()
               
             case SDL_KEYDOWN:     /* A keypress! */
               {
-                SDLKey key = event.key.keysym.sym;
+                SDL_Keycode key = event.key.keysym.sym;
            
                 switch(key)
                   {
@@ -276,11 +276,11 @@ GameSession::process_events()
                it could have nasty bugs, like going allways to the right
                or whatever that key does */
             Player& tux = *world->get_tux();
-            tux.key_event((SDLKey)keymap.jump, UP);
-            tux.key_event((SDLKey)keymap.duck, UP);
-            tux.key_event((SDLKey)keymap.left, UP);
-            tux.key_event((SDLKey)keymap.right, UP);
-            tux.key_event((SDLKey)keymap.fire, UP);
+            tux.key_event((SDL_Keymod)keymap.jump, UP);
+            tux.key_event((SDL_Keymod)keymap.duck, UP);
+            tux.key_event((SDL_Keymod)keymap.left, UP);
+            tux.key_event((SDL_Keymod)keymap.right, UP);
+            tux.key_event((SDL_Keymod)keymap.fire, UP);
             }
           else
             {
@@ -294,7 +294,7 @@ GameSession::process_events()
 
                 case SDL_KEYDOWN:     /* A keypress! */
                   {
-                    SDLKey key = event.key.keysym.sym;
+                    SDL_Keycode key = event.key.keysym.sym;
             
                     if(tux.key_event(key,DOWN))
                       break;
@@ -311,7 +311,7 @@ GameSession::process_events()
                   break;
                 case SDL_KEYUP:      /* A keyrelease! */
                   {
-                    SDLKey key = event.key.keysym.sym;
+                    SDL_Keycode key = event.key.keysym.sym;
 
                     if(tux.key_event(key, UP))
                       break;
@@ -531,12 +531,12 @@ GameSession::draw()
 
   if(game_pause)
     {
-      int x = screen->h / 20;
+      int x = SCREEN_H / 20;
       for(int i = 0; i < x; ++i)
         {
-          fillrect(i % 2 ? (pause_menu_frame * i)%screen->w : -((pause_menu_frame * i)%screen->w) ,(i*20+pause_menu_frame)%screen->h,screen->w,10,20,20,20, rand() % 20 + 1);
+          fillrect(i % 2 ? (pause_menu_frame * i)%SCREEN_W : -((pause_menu_frame * i)%SCREEN_W) ,(i*20+pause_menu_frame)%SCREEN_H,SCREEN_W,10,20,20,20, rand() % 20 + 1);
         }
-      fillrect(0,0,screen->w,screen->h,rand() % 50, rand() % 50, rand() % 50, 128);
+      fillrect(0,0,SCREEN_W,SCREEN_H,rand() % 50, rand() % 50, rand() % 50, 128);
       blue_text->drawf("PAUSE - Press 'P' To Play", 0, 230, A_HMIDDLE, A_TOP, 1);
     }
 
@@ -724,7 +724,7 @@ GameSession::drawstatus()
   }
 
   sprintf(str, "%d", player_status.distros);
-  white_text->draw("COINS", screen->h, 0, 1);
+  white_text->draw("COINS", SCREEN_H, 0, 1);
   gold_text->draw(str, 608, 0, 1);
 
   white_text->draw("LIVES", 480, 20);
@@ -743,8 +743,8 @@ GameSession::drawstatus()
   if(show_fps)
     {
       sprintf(str, "%2.1f", fps_fps);
-      white_text->draw("FPS", screen->h, 40, 1);
-      gold_text->draw(str, screen->h + 60, 40, 1);
+      white_text->draw("FPS", SCREEN_H, 40, 1);
+      gold_text->draw(str, SCREEN_H + 60, 40, 1);
     }
 }
 

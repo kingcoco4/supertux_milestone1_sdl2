@@ -21,8 +21,14 @@
 #include <assert.h>
 #include <iostream>
 #include <algorithm>
-#include "SDL.h"
-#include "SDL_image.h"
+
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_image.h>
+
+#ifndef NOOPENGL
+#include <SDL2/SDL_opengl.h>
+#endif
+
 #include "texture.h"
 #include "globals.h"
 #include "setup.h"
@@ -32,9 +38,8 @@ Surface::Surfaces Surface::surfaces;
 SurfaceData::SurfaceData(SDL_Surface* temp, int use_alpha_)
     : type(SURFACE), surface(0), use_alpha(use_alpha_)
 {
-  // Copy the given surface and make sure that it is not stored in
-  // video memory
-  surface = SDL_CreateRGBSurface(temp->flags & (~SDL_HWSURFACE),
+  // Copy the given surface
+  surface = SDL_CreateRGBSurface(0,
                                  temp->w, temp->h,
                                  temp->format->BitsPerPixel,
                                  temp->format->Rmask,
@@ -43,7 +48,8 @@ SurfaceData::SurfaceData(SDL_Surface* temp, int use_alpha_)
                                  temp->format->Amask);
   if(!surface)
     st_abort("No memory left.", "");
-  SDL_SetAlpha(temp,0,0);
+  
+  SDL_SetSurfaceBlendMode(temp, SDL_BLENDMODE_NONE);
   SDL_BlitSurface(temp, NULL, surface, NULL);
 }
 
@@ -111,8 +117,7 @@ SurfaceData::create_SurfaceOpenGL()
 static int power_of_two(int input)
 {
   int value = 1;
-
-  while ( value < input )
+  while (value < input)
   {
     value <<= 1;
   }
@@ -144,8 +149,8 @@ Surface::Surface(const std::string& file, int use_alpha)
   surfaces.push_back(this);
 }
 
-Surface::Surface(const std::string& file, int x, int y, int w, int h, int use_alpha)
-    : data(file, x, y, w, h, use_alpha), w(0), h(0)
+Surface::Surface(const std::string& file, int x, int y, int w_, int h_, int use_alpha)
+    : data(file, x, y, w_, h_, use_alpha), w(0), h(0)
 {
   impl = data.create();
   if (impl)
@@ -172,12 +177,12 @@ Surface::~Surface()
 {
 #ifdef DEBUG
   bool found = false;
-  for(std::list<Surface*>::iterator i = surfaces.begin(); i != surfaces.end();
-      ++i)
+  for(std::list<Surface*>::iterator i = surfaces.begin(); i != surfaces.end(); ++i)
   {
     if(*i == this)
     {
-      found = true; break;
+      found = true;
+      break;
     }
   }
   if(!found)
@@ -227,7 +232,7 @@ Surface::draw_bg(Uint8 alpha, bool update)
 }
 
 void
-Surface::draw_part(float sx, float sy, float x, float y, float w, float h,  Uint8 alpha, bool update)
+Surface::draw_part(float sx, float sy, float x, float y, float w, float h, Uint8 alpha, bool update)
 {
   if (impl)
   {
@@ -237,11 +242,11 @@ Surface::draw_part(float sx, float sy, float x, float y, float w, float h,  Uint
 }
 
 void
-Surface::draw_stretched(float x, float y, int w, int h, Uint8 alpha, bool update)
+Surface::draw_stretched(float x, float y, int sw, int sh, Uint8 alpha, bool update)
 {
   if (impl)
   {
-    if (impl->draw_stretched(x, y, w, h, alpha, update) == -2)
+    if (impl->draw_stretched(x, y, sw, sh, alpha, update) == -2)
       reload();
   }
 }
@@ -253,27 +258,26 @@ Surface::resize(int w_, int h_)
   {
     w = w_;
     h = h_;
-    if (impl->resize(w_,h_) == -2)
+    if (impl->resize(w_, h_) == -2)
       reload();
   }
 }
 
 Surface* Surface::CaptureScreen()
 {
-  Surface *cap_screen;
-
-  if (!(screen->flags & SDL_OPENGL))
-  {
-    cap_screen = new Surface(SDL_GetVideoSurface(),false);
-  }
-
+  Surface *cap_screen = NULL;
+  
+  int win_w, win_h;
+  SDL_GetWindowSize(window, &win_w, &win_h);
+  
 #ifndef NOOPENGL
   if (use_gl)
   {
     SDL_Surface *temp;
     unsigned char *pixels;
     int i;
-    temp = SDL_CreateRGBSurface(SDL_SWSURFACE, screen->w, screen->h, 24,
+    
+    temp = SDL_CreateRGBSurface(0, win_w, win_h, 24,
 #if SDL_BYTEORDER == SDL_LIL_ENDIAN
                                 0x000000FF, 0x0000FF00, 0x00FF0000, 0
 #else
@@ -281,37 +285,57 @@ Surface* Surface::CaptureScreen()
 #endif
                                );
     if (temp == NULL)
-      st_abort("Error while trying to capture the screen in OpenGL mode","");
-
-    pixels = (unsigned char*) malloc(3 * screen->w * screen->h);
+      st_abort("Error while trying to capture the screen in OpenGL mode", "");
+    
+    pixels = (unsigned char*) malloc(3 * win_w * win_h);
     if (pixels == NULL)
     {
       SDL_FreeSurface(temp);
-      st_abort("Error while trying to capture the screen in OpenGL mode","");
+      st_abort("Error while trying to capture the screen in OpenGL mode", "");
     }
-
-    glReadPixels(0, 0, screen->w, screen->h, GL_RGB, GL_UNSIGNED_BYTE, pixels);
-
-    for (i=0; i<screen->h; i++)
-      memcpy(((char *) temp->pixels) + temp->pitch * i, pixels + 3*screen->w * (screen->h-i-1), screen->w*3);
+    
+    glReadPixels(0, 0, win_w, win_h, GL_RGB, GL_UNSIGNED_BYTE, pixels);
+    
+    for (i = 0; i < win_h; i++)
+      memcpy(((char *) temp->pixels) + temp->pitch * i,
+             pixels + 3 * win_w * (win_h - i - 1), win_w * 3);
+    
     free(pixels);
-
-    cap_screen = new Surface(temp,false);
+    
+    cap_screen = new Surface(temp, false);
     SDL_FreeSurface(temp);
-
   }
+  else
 #endif
+  {
+    // For SDL2 renderer, read pixels from the renderer
+    SDL_Surface* temp = SDL_CreateRGBSurface(0, win_w, win_h, 32,
+                                              0x00FF0000, 0x0000FF00, 
+                                              0x000000FF, 0xFF000000);
+    if (temp == NULL)
+      st_abort("Error while trying to capture the screen", "");
+    
+    if (SDL_RenderReadPixels(renderer, NULL, SDL_PIXELFORMAT_ARGB8888,
+                              temp->pixels, temp->pitch) != 0)
+    {
+      SDL_FreeSurface(temp);
+      st_abort("Error while trying to capture the screen", SDL_GetError());
+    }
+    
+    cap_screen = new Surface(temp, false);
+    SDL_FreeSurface(temp);
+  }
   
-return cap_screen;
+  return cap_screen;
 }
 
 SDL_Surface*
-sdl_surface_part_from_file(const std::string& file, int x, int y, int w, int h,  int use_alpha)
+sdl_surface_part_from_file(const std::string& file, int x, int y, int w, int h, int use_alpha)
 {
   SDL_Rect src;
-  SDL_Surface * sdl_surface;
-  SDL_Surface * temp;
-  SDL_Surface * conv;
+  SDL_Surface* sdl_surface;
+  SDL_Surface* temp;
+  SDL_Surface* conv;
 
   temp = IMG_Load(file.c_str());
 
@@ -319,38 +343,30 @@ sdl_surface_part_from_file(const std::string& file, int x, int y, int w, int h, 
     st_abort("Can't load", file);
 
   /* Set source rectangle for conv: */
-
   src.x = x;
   src.y = y;
   src.w = w;
   src.h = h;
 
-  conv = SDL_CreateRGBSurface(temp->flags, w, h, temp->format->BitsPerPixel,
+  conv = SDL_CreateRGBSurface(0, w, h, temp->format->BitsPerPixel,
                               temp->format->Rmask,
                               temp->format->Gmask,
                               temp->format->Bmask,
                               temp->format->Amask);
 
-  /* #if SDL_BYTEORDER == SDL_BIG_ENDIAN
-     0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff);
-     #else
-
-     0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
-     #endif*/
-
-  SDL_SetAlpha(temp,0,0);
-
+  SDL_SetSurfaceBlendMode(temp, SDL_BLENDMODE_NONE);
   SDL_BlitSurface(temp, &src, conv, NULL);
+
   if(use_alpha == IGNORE_ALPHA && !use_gl)
-    sdl_surface = SDL_DisplayFormat(conv);
+    sdl_surface = SDL_ConvertSurfaceFormat(conv, SDL_PIXELFORMAT_RGB888, 0);
   else
-    sdl_surface = SDL_DisplayFormatAlpha(conv);
+    sdl_surface = SDL_ConvertSurfaceFormat(conv, SDL_PIXELFORMAT_RGBA8888, 0);
 
   if (sdl_surface == NULL)
-    st_abort("Can't covert to display format", file);
+    st_abort("Can't convert to display format", file);
 
   if (use_alpha == IGNORE_ALPHA && !use_gl)
-    SDL_SetAlpha(sdl_surface, 0, 0);
+    SDL_SetSurfaceBlendMode(sdl_surface, SDL_BLENDMODE_NONE);
 
   SDL_FreeSurface(temp);
   SDL_FreeSurface(conv);
@@ -370,15 +386,15 @@ sdl_surface_from_file(const std::string& file, int use_alpha)
     st_abort("Can't load", file);
 
   if(use_alpha == IGNORE_ALPHA && !use_gl)
-    sdl_surface = SDL_DisplayFormat(temp);
+    sdl_surface = SDL_ConvertSurfaceFormat(temp, SDL_PIXELFORMAT_RGB888, 0);
   else
-    sdl_surface = SDL_DisplayFormatAlpha(temp);
+    sdl_surface = SDL_ConvertSurfaceFormat(temp, SDL_PIXELFORMAT_RGBA8888, 0);
 
   if (sdl_surface == NULL)
-    st_abort("Can't covert to display format", file);
+    st_abort("Can't convert to display format", file);
 
   if (use_alpha == IGNORE_ALPHA && !use_gl)
-    SDL_SetAlpha(sdl_surface, 0, 0);
+    SDL_SetSurfaceBlendMode(sdl_surface, SDL_BLENDMODE_NONE);
 
   SDL_FreeSurface(temp);
 
@@ -389,35 +405,25 @@ SDL_Surface*
 sdl_surface_from_sdl_surface(SDL_Surface* sdl_surf, int use_alpha)
 {
   SDL_Surface* sdl_surface;
-  Uint32 saved_flags;
-  Uint8  saved_alpha;
 
-  /* Save the alpha blending attributes */
-  saved_flags = sdl_surf->flags&(SDL_SRCALPHA|SDL_RLEACCELOK);
-  saved_alpha = sdl_surf->format->alpha;
-  if ( (saved_flags & SDL_SRCALPHA)
-       == SDL_SRCALPHA )
-  {
-    SDL_SetAlpha(sdl_surf, 0, 0);
-  }
+  // Save and disable blend mode for accurate copy
+  SDL_BlendMode saved_mode;
+  SDL_GetSurfaceBlendMode(sdl_surf, &saved_mode);
+  SDL_SetSurfaceBlendMode(sdl_surf, SDL_BLENDMODE_NONE);
 
   if(use_alpha == IGNORE_ALPHA && !use_gl)
-    sdl_surface = SDL_DisplayFormat(sdl_surf);
+    sdl_surface = SDL_ConvertSurfaceFormat(sdl_surf, SDL_PIXELFORMAT_RGB888, 0);
   else
-    sdl_surface = SDL_DisplayFormatAlpha(sdl_surf);
+    sdl_surface = SDL_ConvertSurfaceFormat(sdl_surf, SDL_PIXELFORMAT_RGBA8888, 0);
 
-  /* Restore the alpha blending attributes */
-  if ( (saved_flags & SDL_SRCALPHA)
-       == SDL_SRCALPHA )
-  {
-    SDL_SetAlpha(sdl_surface, saved_flags, saved_alpha);
-  }
+  // Restore blend mode
+  SDL_SetSurfaceBlendMode(sdl_surf, saved_mode);
 
   if (sdl_surface == NULL)
-    st_abort("Can't covert to display format", "SURFACE");
+    st_abort("Can't convert to display format", "SURFACE");
 
   if (use_alpha == IGNORE_ALPHA && !use_gl)
-    SDL_SetAlpha(sdl_surface, 0, 0);
+    SDL_SetSurfaceBlendMode(sdl_surface, SDL_BLENDMODE_NONE);
 
   return sdl_surface;
 }
@@ -425,6 +431,7 @@ sdl_surface_from_sdl_surface(SDL_Surface* sdl_surf, int use_alpha)
 //---------------------------------------------------------------------------
 
 SurfaceImpl::SurfaceImpl()
+    : sdl_surface(NULL), w(0), h(0)
 {}
 
 SurfaceImpl::~SurfaceImpl()
@@ -441,22 +448,31 @@ int SurfaceImpl::resize(int w_, int h_)
 {
   w = w_;
   h = h_;
-  SDL_Rect dest;
-  dest.x = 0;
-  dest.y = 0;
-  dest.w = w;
-  dest.h = h;
-  int ret = SDL_SoftStretch(sdl_surface, NULL,
-                            sdl_surface, &dest);
-  return ret;
+  
+  // Create a new surface with the desired size
+  SDL_Surface* new_surface = SDL_CreateRGBSurface(0, w_, h_,
+                                                   sdl_surface->format->BitsPerPixel,
+                                                   sdl_surface->format->Rmask,
+                                                   sdl_surface->format->Gmask,
+                                                   sdl_surface->format->Bmask,
+                                                   sdl_surface->format->Amask);
+  if (!new_surface)
+    return -1;
+  
+  SDL_BlitScaled(sdl_surface, NULL, new_surface, NULL);
+  SDL_FreeSurface(sdl_surface);
+  sdl_surface = new_surface;
+  
+  return 0;
 }
+
+//---------------------------------------------------------------------------
 
 #ifndef NOOPENGL
 SurfaceOpenGL::SurfaceOpenGL(SDL_Surface* surf, int use_alpha)
 {
   sdl_surface = sdl_surface_from_sdl_surface(surf, use_alpha);
-  create_gl(sdl_surface,&gl_texture);
-
+  create_gl(sdl_surface, &gl_texture);
   w = sdl_surface->w;
   h = sdl_surface->h;
 }
@@ -464,17 +480,15 @@ SurfaceOpenGL::SurfaceOpenGL(SDL_Surface* surf, int use_alpha)
 SurfaceOpenGL::SurfaceOpenGL(const std::string& file, int use_alpha)
 {
   sdl_surface = sdl_surface_from_file(file, use_alpha);
-  create_gl(sdl_surface,&gl_texture);
-
+  create_gl(sdl_surface, &gl_texture);
   w = sdl_surface->w;
   h = sdl_surface->h;
 }
 
-SurfaceOpenGL::SurfaceOpenGL(const std::string& file, int x, int y, int w, int h, int use_alpha)
+SurfaceOpenGL::SurfaceOpenGL(const std::string& file, int x, int y, int w_, int h_, int use_alpha)
 {
-  sdl_surface = sdl_surface_part_from_file(file,x,y,w,h,use_alpha);
+  sdl_surface = sdl_surface_part_from_file(file, x, y, w_, h_, use_alpha);
   create_gl(sdl_surface, &gl_texture);
-
   w = sdl_surface->w;
   h = sdl_surface->h;
 }
@@ -485,50 +499,40 @@ SurfaceOpenGL::~SurfaceOpenGL()
 }
 
 void
-SurfaceOpenGL::create_gl(SDL_Surface * surf, GLuint * tex)
+SurfaceOpenGL::create_gl(SDL_Surface* surf, GLuint* tex)
 {
-  Uint32 saved_flags;
-  Uint8  saved_alpha;
-  int w, h;
+  int tex_w, tex_h;
   SDL_Surface *conv;
 
-  w = power_of_two(surf->w);
-  h = power_of_two(surf->h),
+  tex_w = power_of_two(surf->w);
+  tex_h = power_of_two(surf->h);
 
 #if SDL_BYTEORDER == SDL_BIG_ENDIAN
-      conv = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, surf->format->BitsPerPixel,
-                                  0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff);
+  conv = SDL_CreateRGBSurface(0, tex_w, tex_h, 32,
+                              0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff);
 #else
-      conv = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, surf->format->BitsPerPixel,
-                                  0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
+  conv = SDL_CreateRGBSurface(0, tex_w, tex_h, 32,
+                              0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
 #endif
 
-  /* Save the alpha blending attributes */
-  saved_flags = surf->flags&(SDL_SRCALPHA|SDL_RLEACCELOK);
-  saved_alpha = surf->format->alpha;
-  if ( (saved_flags & SDL_SRCALPHA)
-       == SDL_SRCALPHA )
-  {
-    SDL_SetAlpha(surf, 0, 0);
-  }
+  // Save and disable blend mode for accurate copy
+  SDL_BlendMode saved_mode;
+  SDL_GetSurfaceBlendMode(surf, &saved_mode);
+  SDL_SetSurfaceBlendMode(surf, SDL_BLENDMODE_NONE);
 
   SDL_BlitSurface(surf, 0, conv, 0);
 
-  /* Restore the alpha blending attributes */
-  if ( (saved_flags & SDL_SRCALPHA)
-       == SDL_SRCALPHA )
-  {
-    SDL_SetAlpha(surf, saved_flags, saved_alpha);
-  }
+  // Restore blend mode
+  SDL_SetSurfaceBlendMode(surf, saved_mode);
 
-  glGenTextures(1, &*tex);
-  glBindTexture(GL_TEXTURE_2D , *tex);
+  glGenTextures(1, tex);
+  glBindTexture(GL_TEXTURE_2D, *tex);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
   glPixelStorei(GL_UNPACK_ROW_LENGTH, conv->pitch / conv->format->BytesPerPixel);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB10_A2, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, conv->pixels);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tex_w, tex_h, 0, GL_RGBA, GL_UNSIGNED_BYTE, conv->pixels);
   glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 
   SDL_FreeSurface(conv);
@@ -544,7 +548,7 @@ SurfaceOpenGL::draw(float x, float y, Uint8 alpha, bool update)
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-  glColor4ub(alpha, alpha, alpha, alpha);
+  glColor4ub(255, 255, 255, alpha);  // White color, with alpha for transparency
 
   glBindTexture(GL_TEXTURE_2D, gl_texture);
 
@@ -552,17 +556,17 @@ SurfaceOpenGL::draw(float x, float y, Uint8 alpha, bool update)
   glTexCoord2f(0, 0);
   glVertex2f(x, y);
   glTexCoord2f((float)w / pw, 0);
-  glVertex2f((float)w+x, y);
-  glTexCoord2f((float)w / pw, (float)h / ph);  glVertex2f((float)w+x, (float)h+y);
+  glVertex2f((float)w + x, y);
+  glTexCoord2f((float)w / pw, (float)h / ph);
+  glVertex2f((float)w + x, (float)h + y);
   glTexCoord2f(0, (float)h / ph);
-  glVertex2f(x, (float)h+y);
+  glVertex2f(x, (float)h + y);
   glEnd();
 
   glDisable(GL_TEXTURE_2D);
   glDisable(GL_BLEND);
 
   (void) update; // avoid compiler warning
-
   return 0;
 }
 
@@ -571,6 +575,9 @@ SurfaceOpenGL::draw_bg(Uint8 alpha, bool update)
 {
   float pw = power_of_two(w);
   float ph = power_of_two(h);
+
+  int win_w, win_h;
+  SDL_GetWindowSize(window, &win_w, &win_h);
 
   glColor3ub(alpha, alpha, alpha);
 
@@ -581,95 +588,105 @@ SurfaceOpenGL::draw_bg(Uint8 alpha, bool update)
   glTexCoord2f(0, 0);
   glVertex2f(0, 0);
   glTexCoord2f((float)w / pw, 0);
-  glVertex2f(screen->w, 0);
+  glVertex2f(win_w, 0);
   glTexCoord2f((float)w / pw, (float)h / ph);
-  glVertex2f(screen->w, screen->h);
+  glVertex2f(win_w, win_h);
   glTexCoord2f(0, (float)h / ph);
-  glVertex2f(0, screen->h);
+  glVertex2f(0, win_h);
   glEnd();
 
   glDisable(GL_TEXTURE_2D);
 
   (void) update; // avoid compiler warning
-
   return 0;
 }
 
 int
-SurfaceOpenGL::draw_part(float sx, float sy, float x, float y, float w, float h, Uint8 alpha, bool update)
+SurfaceOpenGL::draw_part(float sx, float sy, float x, float y, float w_, float h_, Uint8 alpha, bool update)
 {
-  float pw = power_of_two(int(this->w));
-  float ph = power_of_two(int(this->h));
+  float pw = power_of_two(w);
+  float ph = power_of_two(h);
 
   glBindTexture(GL_TEXTURE_2D, gl_texture);
 
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-  glColor4ub(alpha, alpha, alpha, alpha);
+  glColor4ub(255, 255, 255, alpha);  // White color, with alpha for transparency
 
   glEnable(GL_TEXTURE_2D);
-
 
   glBegin(GL_QUADS);
   glTexCoord2f(sx / pw, sy / ph);
   glVertex2f(x, y);
-  glTexCoord2f((float)(sx + w) / pw, sy / ph);
-  glVertex2f(w+x, y);
-  glTexCoord2f((sx+w) / pw, (sy+h) / ph);
-  glVertex2f(w +x, h+y);
-  glTexCoord2f(sx / pw, (float)(sy+h) / ph);
-  glVertex2f(x, h+y);
+  glTexCoord2f((sx + w_) / pw, sy / ph);
+  glVertex2f(w_ + x, y);
+  glTexCoord2f((sx + w_) / pw, (sy + h_) / ph);
+  glVertex2f(w_ + x, h_ + y);
+  glTexCoord2f(sx / pw, (sy + h_) / ph);
+  glVertex2f(x, h_ + y);
   glEnd();
 
   glDisable(GL_TEXTURE_2D);
   glDisable(GL_BLEND);
 
-  (void) update; // avoid warnings
+  (void) update; // avoid compiler warning
   return 0;
 }
 
 int
 SurfaceOpenGL::draw_stretched(float x, float y, int sw, int sh, Uint8 alpha, bool update)
 {
-  float pw = power_of_two(int(this->w));
-  float ph = power_of_two(int(this->h));
+  float pw = power_of_two(w);
+  float ph = power_of_two(h);
 
   glBindTexture(GL_TEXTURE_2D, gl_texture);
 
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-  glColor4ub(alpha, alpha, alpha, alpha);
+  glColor4ub(255, 255, 255, alpha);  // White color, with alpha for transparency
 
   glEnable(GL_TEXTURE_2D);
-
 
   glBegin(GL_QUADS);
   glTexCoord2f(0, 0);
   glVertex2f(x, y);
   glTexCoord2f((float)w / pw, 0);
-  glVertex2f(sw+x, y);
-  glTexCoord2f((float)w / pw, (float)h / ph);  glVertex2f((float)sw+x, (float)sh+y);
-  glVertex2f(sw +x, sh+y);
+  glVertex2f((float)sw + x, y);
+  glTexCoord2f((float)w / pw, (float)h / ph);
+  glVertex2f((float)sw + x, (float)sh + y);
   glTexCoord2f(0, (float)h / ph);
-  glVertex2f(x, sh+y);
+  glVertex2f(x, (float)sh + y);
   glEnd();
 
   glDisable(GL_TEXTURE_2D);
   glDisable(GL_BLEND);
 
-  (void) update; // avoid warnings
+  (void) update; // avoid compiler warning
   return 0;
 }
-
 #endif
+
+//---------------------------------------------------------------------------
 
 SurfaceSDL::SurfaceSDL(SDL_Surface* surf, int use_alpha)
 {
   sdl_surface = sdl_surface_from_sdl_surface(surf, use_alpha);
   w = sdl_surface->w;
   h = sdl_surface->h;
+  
+  // Create texture from surface for SDL2 renderer
+  sdl_texture = SDL_CreateTextureFromSurface(renderer, sdl_surface);
+  if (!sdl_texture)
+  {
+    std::cerr << "Failed to create texture: " << SDL_GetError() << std::endl;
+  }
+  else
+  {
+    // SET BLEND MODE - This is critical for proper alpha rendering
+    SDL_SetTextureBlendMode(sdl_texture, SDL_BLENDMODE_BLEND);
+  }
 }
 
 SurfaceSDL::SurfaceSDL(const std::string& file, int use_alpha)
@@ -677,158 +694,130 @@ SurfaceSDL::SurfaceSDL(const std::string& file, int use_alpha)
   sdl_surface = sdl_surface_from_file(file, use_alpha);
   w = sdl_surface->w;
   h = sdl_surface->h;
+  
+  // Create texture from surface for SDL2 renderer
+  sdl_texture = SDL_CreateTextureFromSurface(renderer, sdl_surface);
+  if (!sdl_texture)
+  {
+    std::cerr << "Failed to create texture: " << SDL_GetError() << std::endl;
+  }
+  else
+  {
+    // SET BLEND MODE
+    SDL_SetTextureBlendMode(sdl_texture, SDL_BLENDMODE_BLEND);
+  }
 }
 
-SurfaceSDL::SurfaceSDL(const std::string& file, int x, int y, int w, int h,  int use_alpha)
+SurfaceSDL::SurfaceSDL(const std::string& file, int x, int y, int w_, int h_, int use_alpha)
 {
-  sdl_surface = sdl_surface_part_from_file(file, x, y, w, h, use_alpha);
+  sdl_surface = sdl_surface_part_from_file(file, x, y, w_, h_, use_alpha);
   w = sdl_surface->w;
   h = sdl_surface->h;
+  
+  // Create texture from surface for SDL2 renderer
+  sdl_texture = SDL_CreateTextureFromSurface(renderer, sdl_surface);
+  if (!sdl_texture)
+  {
+    std::cerr << "Failed to create texture: " << SDL_GetError() << std::endl;
+  }
+  else
+  {
+    // SET BLEND MODE
+    SDL_SetTextureBlendMode(sdl_texture, SDL_BLENDMODE_BLEND);
+  }
+}
+
+SurfaceSDL::~SurfaceSDL()
+{
+  if (sdl_texture)
+  {
+    SDL_DestroyTexture(sdl_texture);
+  }
 }
 
 int
 SurfaceSDL::draw(float x, float y, Uint8 alpha, bool update)
 {
   SDL_Rect dest;
-
   dest.x = (int)x;
   dest.y = (int)y;
   dest.w = w;
   dest.h = h;
 
-  if(alpha != 255)
-    {
-    /* Create a Surface, make it using colorkey, blit surface into temp, apply alpha
-      to temp sur, blit the temp into the screen */
-    /* Note: this has to be done, since SDL doesn't allow to set alpha to surfaces that
-      already have an alpha mask yet... */
+  if (alpha != 255)
+  {
+    SDL_SetTextureAlphaMod(sdl_texture, alpha);
+  }
 
-    SDL_Surface* sdl_surface_copy = SDL_CreateRGBSurface (sdl_surface->flags,
-                                    sdl_surface->w, sdl_surface->h, sdl_surface->format->BitsPerPixel,
-                                    sdl_surface->format->Rmask, sdl_surface->format->Gmask,
-                                    sdl_surface->format->Bmask,
-                                    0);
-    int colorkey = SDL_MapRGB(sdl_surface_copy->format, 255, 0, 255);
-    SDL_FillRect(sdl_surface_copy, NULL, colorkey);
-    SDL_SetColorKey(sdl_surface_copy, SDL_SRCCOLORKEY, colorkey);
+  int ret = SDL_RenderCopy(renderer, sdl_texture, NULL, &dest);
 
+  if (alpha != 255)
+  {
+    SDL_SetTextureAlphaMod(sdl_texture, 255);
+  }
 
-    SDL_BlitSurface(sdl_surface, NULL, sdl_surface_copy, NULL);
-    SDL_SetAlpha(sdl_surface_copy ,SDL_SRCALPHA,alpha);
-
-    int ret = SDL_BlitSurface(sdl_surface_copy, NULL, screen, &dest);
-
-    if (update == UPDATE)
-      SDL_UpdateRect(screen, dest.x, dest.y, dest.w, dest.h);
-
-    SDL_FreeSurface (sdl_surface_copy);
-    return ret;
-    }
-
-  int ret = SDL_BlitSurface(sdl_surface, NULL, screen, &dest);
-
-  if (update == UPDATE)
-    SDL_UpdateRect(screen, dest.x, dest.y, dest.w, dest.h);
-
+  (void) update; // Not needed in SDL2
   return ret;
 }
 
 int
 SurfaceSDL::draw_bg(Uint8 alpha, bool update)
 {
-  SDL_Rect dest;
+  std::cout << "drawing background" << std::endl;
+  int win_w, win_h;
+  SDL_GetWindowSize(window, &win_w, &win_h);
 
+  SDL_Rect dest;
   dest.x = 0;
   dest.y = 0;
-  dest.w = screen->w;
-  dest.h = screen->h;
+  dest.w = win_w;
+  dest.h = win_h;
 
-  if(alpha != 255)
-    {
-    /* Create a Surface, make it using colorkey, blit surface into temp, apply alpha
-      to temp sur, blit the temp into the screen */
-    /* Note: this has to be done, since SDL doesn't allow to set alpha to surfaces that
-      already have an alpha mask yet... */
+  if (alpha != 255)
+  {
+    SDL_SetTextureAlphaMod(sdl_texture, alpha);
+  }
 
-    SDL_Surface* sdl_surface_copy = SDL_CreateRGBSurface (sdl_surface->flags,
-                                    sdl_surface->w, sdl_surface->h, sdl_surface->format->BitsPerPixel,
-                                    sdl_surface->format->Rmask, sdl_surface->format->Gmask,
-                                    sdl_surface->format->Bmask,
-                                    0);
-    int colorkey = SDL_MapRGB(sdl_surface_copy->format, 255, 0, 255);
-    SDL_FillRect(sdl_surface_copy, NULL, colorkey);
-    SDL_SetColorKey(sdl_surface_copy, SDL_SRCCOLORKEY, colorkey);
+  int ret = SDL_RenderCopy(renderer, sdl_texture, NULL, &dest);
 
+  if (alpha != 255)
+  {
+    SDL_SetTextureAlphaMod(sdl_texture, 255);
+  }
 
-    SDL_BlitSurface(sdl_surface, NULL, sdl_surface_copy, NULL);
-    SDL_SetAlpha(sdl_surface_copy ,SDL_SRCALPHA,alpha);
-
-    int ret = SDL_BlitSurface(sdl_surface_copy, NULL, screen, &dest);
-
-    if (update == UPDATE)
-      SDL_UpdateRect(screen, dest.x, dest.y, dest.w, dest.h);
-
-    SDL_FreeSurface (sdl_surface_copy);
-    return ret;
-    }
-
-  int ret = SDL_SoftStretch(sdl_surface, NULL, screen, &dest);
-
-  if (update == UPDATE)
-    SDL_UpdateRect(screen, dest.x, dest.y, dest.w, dest.h);
-
+  (void) update; // Not needed in SDL2
   return ret;
 }
 
 int
-SurfaceSDL::draw_part(float sx, float sy, float x, float y, float w, float h, Uint8 alpha, bool update)
+SurfaceSDL::draw_part(float sx, float sy, float x, float y, float w_, float h_, Uint8 alpha, bool update)
 {
   SDL_Rect src, dest;
 
   src.x = (int)sx;
   src.y = (int)sy;
-  src.w = (int)w;
-  src.h = (int)h;
+  src.w = (int)w_;
+  src.h = (int)h_;
 
   dest.x = (int)x;
   dest.y = (int)y;
-  dest.w = (int)w;
-  dest.h = (int)h;
+  //do not change
+  dest.w = (int)w_;
+  dest.h = (int)h_;
 
-  if(alpha != 255)
-    {
-    /* Create a Surface, make it using colorkey, blit surface into temp, apply alpha
-      to temp sur, blit the temp into the screen */
-    /* Note: this has to be done, since SDL doesn't allow to set alpha to surfaces that
-      already have an alpha mask yet... */
+  if (alpha != 255)
+  {
+    SDL_SetTextureAlphaMod(sdl_texture, alpha);
+  }
 
-    SDL_Surface* sdl_surface_copy = SDL_CreateRGBSurface (sdl_surface->flags,
-                                    sdl_surface->w, sdl_surface->h, sdl_surface->format->BitsPerPixel,
-                                    sdl_surface->format->Rmask, sdl_surface->format->Gmask,
-                                    sdl_surface->format->Bmask,
-                                    0);
-    int colorkey = SDL_MapRGB(sdl_surface_copy->format, 255, 0, 255);
-    SDL_FillRect(sdl_surface_copy, NULL, colorkey);
-    SDL_SetColorKey(sdl_surface_copy, SDL_SRCCOLORKEY, colorkey);
+  int ret = SDL_RenderCopy(renderer, sdl_texture, &src, &dest);
 
+  if (alpha != 255)
+  {
+    SDL_SetTextureAlphaMod(sdl_texture, 255);
+  }
 
-    SDL_BlitSurface(sdl_surface, NULL, sdl_surface_copy, NULL);
-    SDL_SetAlpha(sdl_surface_copy ,SDL_SRCALPHA,alpha);
-
-    int ret = SDL_BlitSurface(sdl_surface_copy, NULL, screen, &dest);
-
-    if (update == UPDATE)
-      SDL_UpdateRect(screen, dest.x, dest.y, dest.w, dest.h);
-
-    SDL_FreeSurface (sdl_surface_copy);
-    return ret;
-    }
-
-  int ret = SDL_BlitSurface(sdl_surface, &src, screen, &dest);
-
-  if (update == UPDATE)
-    update_rect(screen, dest.x, dest.y, dest.w, dest.h);
-
+  (void) update; // Not needed in SDL2
   return ret;
 }
 
@@ -836,35 +825,25 @@ int
 SurfaceSDL::draw_stretched(float x, float y, int sw, int sh, Uint8 alpha, bool update)
 {
   SDL_Rect dest;
-
   dest.x = (int)x;
   dest.y = (int)y;
-  dest.w = (int)sw;
-  dest.h = (int)sh;
+  dest.w = sw;
+  dest.h = sh;
 
-  if(alpha != 255)
-    SDL_SetAlpha(sdl_surface ,SDL_SRCALPHA,alpha);
+  if (alpha != 255)
+  {
+    SDL_SetTextureAlphaMod(sdl_texture, alpha);
+  }
 
+  int ret = SDL_RenderCopy(renderer, sdl_texture, NULL, &dest);
 
-  SDL_Surface* sdl_surface_copy = SDL_CreateRGBSurface (sdl_surface->flags,
-                                  sw, sh, sdl_surface->format->BitsPerPixel,
-                                  sdl_surface->format->Rmask, sdl_surface->format->Gmask,
-                                  sdl_surface->format->Bmask,
-                                  0);
+  if (alpha != 255)
+  {
+    SDL_SetTextureAlphaMod(sdl_texture, 255);
+  }
 
-  SDL_BlitSurface(sdl_surface, NULL, sdl_surface_copy, NULL);
-  SDL_SoftStretch(sdl_surface_copy, NULL, sdl_surface_copy, &dest);
-
-  int ret = SDL_BlitSurface(sdl_surface_copy,NULL,screen,&dest);
-  SDL_FreeSurface(sdl_surface_copy);
-
-  if (update == UPDATE)
-    update_rect(screen, dest.x, dest.y, dest.w, dest.h);
-
+  (void) update; // Not needed in SDL2
   return ret;
 }
-
-SurfaceSDL::~SurfaceSDL()
-{}
 
 /* EOF */

@@ -55,15 +55,18 @@
 
 #include "player.h"
 
+#ifndef DATA_PREFIX
+#define DATA_PREFIX "./data/"
+#endif
+
 #ifdef WIN32
 #define mkdir(dir, mode)    mkdir(dir)
-// on win32 we typically don't want LFS paths
 #undef DATA_PREFIX
 #define DATA_PREFIX "./data/"
 #endif
 
 /* Screen proprities: */
-/* Don't use this to test for the actual screen sizes. Use screen->w/h instead! */
+
 #define SCREEN_W 640
 #define SCREEN_H 480
 
@@ -132,10 +135,9 @@ FILE * opendata(const char * rel_filename, const char * mode)
 
   filename = (char *) malloc(sizeof(char) * (strlen(st_dir) +
                                              strlen(rel_filename) + 1));
-
   strcpy(filename, st_dir);
-  /* Open the high score file: */
 
+  /* Open the high score file: */
   strcat(filename, rel_filename);
 
   /* Try opening the file: */
@@ -154,6 +156,7 @@ FILE * opendata(const char * rel_filename, const char * mode)
 
   return(fi);
 }
+
 
 /* Get all names of sub-directories in a certain directory. */
 /* Returns the number of sub-directories found. */
@@ -345,7 +348,7 @@ void st_directory_setup(void)
       char exe_file[PATH_MAX];
       if (readlink("/proc/self/exe", exe_file, PATH_MAX) < 0)
         {
-          puts("Couldn't read /proc/self/exe, using default path: " DATA_PREFIX);
+          puts("Couldn't read /proc/self/exe, using default path: ");
           datadir = DATA_PREFIX;
         }
       else
@@ -384,7 +387,7 @@ void st_menu(void)
   contrib_subset_menu   = new Menu();
   worldmap_menu  = new Menu();
 
-  main_menu->set_pos(screen->w/2, 335);
+  main_menu->set_pos(SCREEN_W/2, 335);
   main_menu->additem(MN_GOTO, "Start Game",0,load_game_menu, MNID_STARTGAME);
   main_menu->additem(MN_GOTO, "Bonus Levels",0,contrib_menu, MNID_CONTRIB);
   main_menu->additem(MN_GOTO, "Options",0,options_menu, MNID_OPTIONMENU);
@@ -580,9 +583,6 @@ void st_general_setup(void)
 
   seticon();
 
-  /* Unicode needed for input handling: */
-
-  SDL_EnableUNICODE(1);
 
   /* Load global images: */
 
@@ -644,114 +644,120 @@ void st_general_free(void)
   delete load_game_menu;
 }
 
-void st_video_setup(void)
+
+
+int st_video_setup(void)
 {
-  /* Init SDL Video: */
-  if (SDL_Init(SDL_INIT_VIDEO) < 0)
-    {
-      fprintf(stderr,
-              "\nError: I could not initialize video!\n"
-              "The Simple DirectMedia error that occured was:\n"
-              "%s\n\n", SDL_GetError());
-      exit(1);
-    }
+  // Initialize SDL
+  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK) < 0)
+  {
+    fprintf(stderr, "Couldn't initialize SDL: %s\n", SDL_GetError());
+    return -1;
+  }
 
-  /* Open display: */
-  if(use_gl)
-    st_video_setup_gl();
-  else
-    st_video_setup_sdl();
+  // Enable text input for menu/text entry
+  SDL_StartTextInput();
 
-  Surface::reload_all();
-
-  /* Set window manager stuff: */
-  SDL_WM_SetCaption("SuperTux " VERSION, "SuperTux");
-}
-
-void st_video_setup_sdl(void)
-{
+  Uint32 window_flags = SDL_WINDOW_SHOWN;
+  
   if (use_fullscreen)
-    {
-      screen = SDL_SetVideoMode(SCREEN_W, SCREEN_H, 0, SDL_FULLSCREEN ) ; /* | SDL_HWSURFACE); */
-      if (screen == NULL)
-        {
-          fprintf(stderr,
-                  "\nWarning: I could not set up fullscreen video for "
-                  "640x480 mode.\n"
-                  "The Simple DirectMedia error that occured was:\n"
-                  "%s\n\n", SDL_GetError());
-          use_fullscreen = false;
-        }
-    }
-  else
-    {
-      screen = SDL_SetVideoMode(SCREEN_W, SCREEN_H, 0, SDL_HWSURFACE | SDL_DOUBLEBUF );
+  {
+    window_flags |= SDL_WINDOW_FULLSCREEN;
+  }
 
-      if (screen == NULL)
-        {
-          fprintf(stderr,
-                  "\nError: I could not set up video for 640x480 mode.\n"
-                  "The Simple DirectMedia error that occured was:\n"
-                  "%s\n\n", SDL_GetError());
-          exit(1);
-        }
-    }
-}
-
-void st_video_setup_gl(void)
-{
 #ifndef NOOPENGL
-
-  SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 5);
-  SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 5);
-  SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 5);
-  SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
-  SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-
-  if (use_fullscreen)
-    {
-      screen = SDL_SetVideoMode(SCREEN_W, SCREEN_H, 0, SDL_FULLSCREEN | SDL_OPENGL) ; /* | SDL_HWSURFACE); */
-      if (screen == NULL)
-        {
-          fprintf(stderr,
-                  "\nWarning: I could not set up fullscreen video for "
-                  "640x480 mode.\n"
-                  "The Simple DirectMedia error that occured was:\n"
-                  "%s\n\n", SDL_GetError());
-          use_fullscreen = false;
-        }
-    }
-  else
-    {
-      screen = SDL_SetVideoMode(SCREEN_W, SCREEN_H, 0, SDL_OPENGL);
-
-      if (screen == NULL)
-        {
-          fprintf(stderr,
-                  "\nError: I could not set up video for 640x480 mode.\n"
-                  "The Simple DirectMedia error that occured was:\n"
-                  "%s\n\n", SDL_GetError());
-          exit(1);
-        }
-    }
-
-  /*
-   * Set up OpenGL for 2D rendering.
-   */
-  glDisable(GL_DEPTH_TEST);
-  glDisable(GL_CULL_FACE);
-
-  glViewport(0, 0, screen->w, screen->h);
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  glOrtho(0, screen->w, screen->h, 0, -1.0, 1.0);
-
-  glMatrixMode(GL_MODELVIEW);
-  glLoadIdentity();
-  glTranslatef(0.0f, 0.0f, 0.0f);
-
+  if (use_gl)
+  {
+    window_flags |= SDL_WINDOW_OPENGL;
+    
+    // Set OpenGL attributes before creating window
+    SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 5);
+    SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 5);
+    SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 5);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+  }
 #endif
 
+  // Create window
+  window = SDL_CreateWindow("SuperTux",
+                            SDL_WINDOWPOS_CENTERED,
+                            SDL_WINDOWPOS_CENTERED,
+                            SCREEN_W, SCREEN_H,
+                            window_flags);
+
+  if (window == NULL)
+  {
+    fprintf(stderr, "Couldn't create window: %s\n", SDL_GetError());
+    return -1;
+  }
+
+#ifndef NOOPENGL
+  if (use_gl)
+  {
+    // Create OpenGL context - store in global variable!
+    gl_context = SDL_GL_CreateContext(window);
+    if (gl_context == NULL)
+    {
+      fprintf(stderr, "Couldn't create OpenGL context: %s\n", SDL_GetError());
+      return -1;
+    }
+    
+    // Make context current
+    SDL_GL_MakeCurrent(window, gl_context);
+    
+    // Setup OpenGL
+    int drawable_w, drawable_h;
+    SDL_GL_GetDrawableSize(window, &drawable_w, &drawable_h);
+    //std::cout << "drawable w: " << drawable_w << std::endl << "drawable h: " << drawable_h << std::endl;
+    glViewport(0, 0, drawable_w, drawable_h);
+
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0, drawable_w, drawable_h, 0, -1, 1);
+
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+
+    
+    // Disable depth test for 2D rendering
+    glDisable(GL_DEPTH_TEST);
+    
+    // Enable blending
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    
+    // Set clear color to black
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    
+    // Clear BOTH buffers initially (important for double buffering!)
+    glClear(GL_COLOR_BUFFER_BIT);
+    SDL_GL_SwapWindow(window);
+    glClear(GL_COLOR_BUFFER_BIT);
+    
+    // Enable vsync
+    SDL_GL_SetSwapInterval(1);
+    
+    printf("OpenGL Version: %s\n", glGetString(GL_VERSION));
+  }
+  else
+#endif
+  {
+    // Create renderer for software rendering
+    renderer = SDL_CreateRenderer(window, -1, 
+                                   SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    if (renderer == NULL)
+    {
+      fprintf(stderr, "Couldn't create renderer: %s\n", SDL_GetError());
+      return -1;
+    }
+    
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
+    SDL_RenderSetIntegerScale(renderer, SDL_TRUE);
+
+  }
+  
+  return 0;
 }
 
 void st_joystick_setup(void)
@@ -893,40 +899,7 @@ void st_abort(const std::string& reason, const std::string& details)
 
 void seticon(void)
 {
-//  int masklen;
-//  Uint8 * mask;
-  SDL_Surface * icon;
 
-
-  /* Load icon into a surface: */
-
-  icon = IMG_Load((datadir + "/images/icon.xpm").c_str());
-  if (icon == NULL)
-    {
-      fprintf(stderr,
-              "\nError: I could not load the icon image: %s%s\n"
-              "The Simple DirectMedia error that occured was:\n"
-              "%s\n\n", datadir.c_str(), "/images/icon.xpm", SDL_GetError());
-      exit(1);
-    }
-
-
-  /* Create mask: */
-/*
-  masklen = (((icon -> w) + 7) / 8) * (icon -> h);
-  mask = (Uint8*) malloc(masklen * sizeof(Uint8));
-  memset(mask, 0xFF, masklen);
-*/
-
-  /* Set icon: */
-
-  SDL_WM_SetIcon(icon, NULL);//mask);
-
-
-  /* Free icon surface & mask: */
-
-//  free(mask);
-  SDL_FreeSurface(icon);
 }
 
 
@@ -949,6 +922,13 @@ void parseargs(int argc, char * argv[])
 
           use_fullscreen = true;
         }
+        else if (strcmp(argv[i], "--window") == 0 ||
+               strcmp(argv[i], "-w") == 0)
+        {
+          /* Use window mode: */
+
+          use_fullscreen = false;
+        }      
       else if (strcmp(argv[i], "--joystick") == 0 || strcmp(argv[i], "-j") == 0)
         {
           assert(i+1 < argc);

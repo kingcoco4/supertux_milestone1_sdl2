@@ -43,7 +43,8 @@ enum OptionsMenuIDs {
   MNID_FULLSCREEN,
   MNID_SOUND,
   MNID_MUSIC,
-  MNID_SHOWFPS
+  MNID_SHOWFPS,
+  MNID_SHOWMOUSE
   };
 
 enum GameMenuIDs {
@@ -207,7 +208,7 @@ public:
 
   bool isToggled(int id);
 
-  void Menu::get_controlfield_key_into_input(MenuItem *item);
+  void get_controlfield_key_into_input(MenuItem *item);
 
   void draw   ();
   void draw_item(int index, int menu_width, int menu_height);
@@ -236,6 +237,8 @@ extern Menu* worldmap_menu;
 extern Menu* options_menu;
 extern Menu* options_keys_menu;
 extern Menu* options_joystick_menu;
+extern Menu* options_joystick_axis_menu;
+extern Menu* options_joystick_button_menu;
 extern Menu* highscore_menu;
 extern Menu* load_game_menu;
 extern Menu* save_game_menu;

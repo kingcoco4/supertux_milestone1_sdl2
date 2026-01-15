@@ -180,9 +180,9 @@ World::draw()
   /* Draw the real background */
   if(level->img_bkgd)
     {
-      int s = (int)((float)scroll_x * ((float)level->bkgd_speed/100.0f)) % screen->w;
+      int s = (int)((float)scroll_x * ((float)level->bkgd_speed/100.0f)) % SCREEN_W;
       level->img_bkgd->draw_part(s, 0,0,0,level->img_bkgd->w - s, level->img_bkgd->h);
-      level->img_bkgd->draw_part(0, 0,screen->w - s ,0,s,level->img_bkgd->h);
+      level->img_bkgd->draw_part(0, 0,SCREEN_W - s ,0,s,level->img_bkgd->h);
     }
   else
     {
@@ -336,13 +336,13 @@ void World::scrolling(double frame_ratio)
     {
       float final_scroll_x;
       if (tux.physic.get_velocity_x() > 0)
-        final_scroll_x = tux_pos_x - (screen->w - X_SPACE);
+        final_scroll_x = tux_pos_x - (SCREEN_W - X_SPACE);
       else if (tux.physic.get_velocity_x() < 0)
         final_scroll_x = tux_pos_x - X_SPACE;
       else
       {
         if (tux.dir == RIGHT)
-          final_scroll_x = tux_pos_x - (screen->w - X_SPACE);
+          final_scroll_x = tux_pos_x - (SCREEN_W - X_SPACE);
         else if (tux.dir == LEFT && level->back_scrolling)
           final_scroll_x = tux_pos_x - X_SPACE;
       }
@@ -355,14 +355,14 @@ void World::scrolling(double frame_ratio)
     }
     else
     {
-      if (tux.physic.get_velocity_x() > 0 && scroll_x < tux_pos_x - (screen->w - X_SPACE))
-        scroll_x = tux_pos_x - (screen->w - X_SPACE);
+      if (tux.physic.get_velocity_x() > 0 && scroll_x < tux_pos_x - (SCREEN_W - X_SPACE))
+        scroll_x = tux_pos_x - (SCREEN_W - X_SPACE);
       else if (tux.physic.get_velocity_x() < 0 && scroll_x > tux_pos_x - X_SPACE && level->back_scrolling)
         scroll_x = tux_pos_x - X_SPACE;
       else
       {
-        if (tux.dir == RIGHT && scroll_x < tux_pos_x - (screen->w - X_SPACE))
-            scroll_x = tux_pos_x - (screen->w - X_SPACE);
+        if (tux.dir == RIGHT && scroll_x < tux_pos_x - (SCREEN_W - X_SPACE))
+            scroll_x = tux_pos_x - (SCREEN_W - X_SPACE);
         else if (tux.dir == LEFT && scroll_x > tux_pos_x - X_SPACE && level->back_scrolling)
             scroll_x = tux_pos_x - X_SPACE;
       }
@@ -371,14 +371,14 @@ void World::scrolling(double frame_ratio)
 
   else /*no debug*/
   {
-    if (tux.physic.get_velocity_x() > 0 && scroll_x < tux_pos_x - (screen->w - X_SPACE))
-      scroll_x = tux_pos_x - (screen->w - X_SPACE);
+    if (tux.physic.get_velocity_x() > 0 && scroll_x < tux_pos_x - (SCREEN_W - X_SPACE))
+      scroll_x = tux_pos_x - (SCREEN_W - X_SPACE);
     else if (tux.physic.get_velocity_x() < 0 && scroll_x > tux_pos_x - X_SPACE && level->back_scrolling)
       scroll_x = tux_pos_x - X_SPACE;
     else
     {
-      if (tux.dir == RIGHT && scroll_x < tux_pos_x - (screen->w - X_SPACE))
-          scroll_x = tux_pos_x - (screen->w - X_SPACE);
+      if (tux.dir == RIGHT && scroll_x < tux_pos_x - (SCREEN_W - X_SPACE))
+          scroll_x = tux_pos_x - (SCREEN_W - X_SPACE);
       else if (tux.dir == LEFT && scroll_x > tux_pos_x - X_SPACE && level->back_scrolling)
           scroll_x = tux_pos_x - X_SPACE;
     }
@@ -388,8 +388,8 @@ void World::scrolling(double frame_ratio)
   // this code prevent the screen to scroll before the start or after the level's end
   if(scroll_x < 0)
     scroll_x = 0;
-  if(scroll_x > level->width * 32 - screen->w)
-    scroll_x = level->width * 32 - screen->w;
+  if(scroll_x > level->width * 32 - SCREEN_W)
+    scroll_x = level->width * 32 - SCREEN_W;
 }
 
 void
