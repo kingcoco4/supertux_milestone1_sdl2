@@ -1,0 +1,14 @@
+(supertux-savegame
+  (version 1)
+  (title  "Icyisland - 0/40")
+  (lives   4)
+  (score   0)
+  (distros 0)
+  (tux (x 35) (y 4)
+       (back "north")
+       (bonus "none"))
+  (levels
+   )
+ )
+
+;; EOF ;;

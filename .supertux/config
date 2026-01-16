@@ -1,0 +1,24 @@
+(supertux-config
+	;; the following options can be set to #t or #f:
+	(fullscreen #f)
+	(sound      #f)
+	(music      #t)
+	(show_fps   #f)
+
+	;; either "opengl" or "sdl"
+	(video      "sdl")
+
+	;; joystick number (-1 means no joystick):
+	(joystick   -1)
+	(joystick-x   0)
+	(joystick-y   1)
+	(joystick-a   0)
+	(joystick-b   1)
+	(joystick-start  2)
+	(joystick-deadzone  4096)
+	(keyboard-jump  122)
+	(keyboard-duck  1073741905)
+	(keyboard-left  1073741904)
+	(keyboard-right 1073741903)
+	(keyboard-fire  120)
+)

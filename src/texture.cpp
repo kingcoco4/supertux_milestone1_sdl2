@@ -763,7 +763,7 @@ SurfaceSDL::draw(float x, float y, Uint8 alpha, bool update)
 int
 SurfaceSDL::draw_bg(Uint8 alpha, bool update)
 {
-  std::cout << "drawing background" << std::endl;
+  //std::cout << "drawing background" << std::endl;
   int win_w, win_h;
   SDL_GetWindowSize(window, &win_w, &win_h);
 
