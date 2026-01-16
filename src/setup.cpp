@@ -1024,6 +1024,7 @@ void parseargs(int argc, char * argv[])
           printf("Usage: %s [OPTIONS] FILENAME\n\n", argv[0]);
           puts("Display Options:\n"
                "  --fullscreen        Run in fullscreen mode.\n"
+               "  --window             Run in windowed mode.\n"
                "  --opengl            If opengl support was compiled in, this will enable\n"
                "                      the OpenGL mode.\n"
                "  --sdl               Use non-opengl renderer\n"
